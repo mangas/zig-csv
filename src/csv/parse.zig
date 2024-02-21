@@ -182,7 +182,7 @@ pub fn CsvParser(
 
         /// Try to read a row and return a parsed T out of it if possible
         /// Returns null if the iterator is done
-        pub fn next(self: *Self) CsvParseError!?T {
+        pub fn next(self: *Self) !?T {
             // TODO: Who should be managing draft_struct's memory?
             var draft_struct: T = undefined;
             const maybe = try self.nextInto(&draft_struct);

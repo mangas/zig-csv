@@ -22,6 +22,8 @@ const WriterError = error{
     SystemResources,
     Unexpected,
     WouldBlock,
+    DeviceBusy,
+    InvalidArgument,
 };
 
 // TODO: generalize to all atomic types
@@ -58,7 +60,7 @@ fn serializeAtomic(
             }
 
             inline for (Enum.fields) |EnumField| {
-                if (std.meta.isTag(value, EnumField.name)) {
+                if (value == @field(T, EnumField.name)) {
                     _ = try writer.writeAll(EnumField.name);
                 }
             }
@@ -98,8 +100,8 @@ pub fn CsvSerializer(
 
         pub fn appendRow(self: *Self, data: T) WriterError!void {
             inline for (Fields) |F| {
-                const field_val: F.field_type = @field(data, F.name);
-                switch (@typeInfo(F.field_type)) {
+                const field_val: F.type = @field(data, F.name);
+                switch (@typeInfo(F.type)) {
                     .Array => |info| {
                         if (comptime info.child != u8) {
                             @compileError("Arrays can only be u8 and '" ++ F.name ++ "'' is " ++ @typeName(info.child));
@@ -129,13 +131,13 @@ pub fn CsvSerializer(
                     },
                     .Union => |U| {
                         inline for (U.fields) |UF| {
-                            if (std.meta.isTag(field_val, UF.name)) {
-                                try serializeAtomic(UF.field_type, Writer, self.writer, @field(field_val, UF.name));
+                            if (field_val == @field(U.tag_type.?, UF.name)) {
+                                try serializeAtomic(UF.type, Writer, self.writer, @field(field_val, UF.name));
                             }
                         }
                     },
                     else => {
-                        try serializeAtomic(F.field_type, Writer, self.writer, field_val);
+                        try serializeAtomic(F.type, Writer, self.writer, field_val);
                     },
                 }
                 try self.writer.writeByte(config.field_end_delimiter);
@@ -166,9 +168,9 @@ test "serialize to buffer" {
 test "serialize unions" {
     var allocator = std.testing.allocator;
 
-    const file_path = "tmp/serialize_union.csv";
-    var file = try fs.cwd().createFile(file_path, .{});
-    defer file.close();
+    var buf: [48]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    var writer = stream.writer();
 
     const Color = enum { red, green, blue };
 
@@ -185,7 +187,7 @@ test "serialize unions" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var serializer = CsvSerializer(UnionStruct, fs.File.Writer, .{}).init(file.writer());
+    var serializer = CsvSerializer(UnionStruct, @TypeOf(writer), .{}).init(writer);
 
     try serializer.writeHeader();
     try serializer.appendRow(UnionStruct{
@@ -201,12 +203,11 @@ test "serialize unions" {
         .union_field = SampleUnion{ .boolean = true },
     });
 
-    const to_path = "tmp/serialize_union.csv";
-    var to_file = try fs.cwd().openFile(to_path, .{});
-    defer to_file.close();
-
     const from_path = "test/data/serialize_union.csv";
     const from_file = try std.fs.cwd().openFile(from_path, .{});
     defer from_file.close();
-    try std.testing.expect(try utils.eqlFileContents(to_file, from_file));
+
+    var reader = std.io.fixedBufferStream(&buf);
+
+    try utils.eqlContentReader(reader.reader(), from_file.reader());
 }

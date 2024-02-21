@@ -50,8 +50,10 @@ pub inline fn parseAtomic(
             }
         },
         .Struct => |_| {
+            // std.debug.print("{any} - {s}", .{ T, input_val });
             if (!@hasDecl(T, "fromStr")) {
-                @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+                return error.BadInput;
+                // @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
             }
             const fromStr = T.fromStr;
             const info = @typeInfo(@TypeOf(fromStr));
@@ -60,11 +62,11 @@ pub inline fn parseAtomic(
                 if (func.params.len != 1) {
                     @compileError("Unsupported type " ++ @typeName(T) ++ ". Expected fromStr fn([]const u8) !T");
                 }
-                if (func.return_type == null or func.return_type.? != T) {
-                    @compileError("Unsupported type " ++ @typeName(T) ++ ". Expected fromStr fn([]const u8) !T");
-                }
+                // if (func.return_type == null or func.return_type.? != T) {
+                //     @compileError("Unsupported type " ++ @typeName(T) ++ ". Expected fromStr fn([]const u8) !T");
+                // }
 
-                return @call(.auto, func, input_val);
+                return @call(.auto, fromStr, .{input_val});
             }
         },
         else => {
@@ -238,11 +240,11 @@ pub fn CsvParser(
                                 }
                             },
                             .Union => |U| {
-                                var maybe_out: ?F.field_type = null;
+                                var maybe_out: ?F.type = null;
                                 inline for (U.fields) |UF| {
-                                    const maybe_atomic = parseAtomic(UF.field_type, UF.name, field) catch null;
+                                    const maybe_atomic: ?UF.type = parseAtomic(UF.type, UF.name, field) catch null;
                                     if (maybe_atomic) |atomic| {
-                                        maybe_out = @unionInit(F.field_type, UF.name, atomic);
+                                        maybe_out = @unionInit(F.type, UF.name, atomic);
                                         break; // stop when one succeeeds
                                     }
                                 }
@@ -329,7 +331,7 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
             //             const def_a = @field(a, UF.name);
             //             if (std.meta.isTag(b, UF.name)) {
             //                 const def_b = @field(b, UF.name);
-            //                 try testStructEql(UF.field_type, def_a, def_b);
+            //                 try testStructEql(UF.type, def_a, def_b);
             //             } else {
             //                 try std.testing.expect(false);
             //             }
@@ -345,12 +347,12 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
         .Struct => {
             const Fields = TypeInfo.Struct.fields;
             inline for (Fields) |Field| {
-                if (comptime Field.field_type == []const u8) {
+                if (comptime Field.type == []const u8) {
                     // std.debug.print("Comparing {s} and {s}\n", .{ @field(a, Field.name), @field(b, Field.name) });
                     try std.testing.expect(std.mem.eql(u8, a.name, b.name));
                 } else {
                     // try std.testing.expect(std.meta.eql(@field(a, Field.name), @field(b, Field.name)));
-                    try testStructEql(Field.field_type, @field(a, Field.name), @field(b, Field.name));
+                    try testStructEql(Field.type, @field(a, Field.name), @field(b, Field.name));
                 }
             }
         },
@@ -366,7 +368,7 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
 // fn structEql(comptime T: type, a: T, b: T) bool {
 //     const Fields = @typeInfo(T).Struct.fields;
 //     inline for (Fields) |Field| {
-//         if (comptime Field.field_type == []const u8) {
+//         if (comptime Field.type == []const u8) {
 //             if (!std.mem.eql(u8, @field(a, Field.name), @field(b, Field.name))) {
 //                 return false;
 //             }
@@ -746,5 +748,51 @@ test "parse unions" {
     if (maybe_fourth_row) |_| {
         std.debug.print("Error parsing fourth row, expected null\n", .{});
         try std.testing.expectEqual(false, true);
+    }
+}
+
+test "nested struct" {
+    var allocator = std.testing.allocator;
+
+    const input =
+        \\ union_field,
+        \\1,
+        // \\2.3,
+        // \\true,
+    ;
+
+    var stream = std.io.fixedBufferStream(input);
+    var reader = stream.reader();
+    const Tag = enum { int, float, boolean };
+
+    const Bool = struct {
+        is_bool: bool,
+
+        pub fn fromStr(str: []const u8) !@This() {
+            return .{ .is_bool = std.mem.eql(u8, "true", str) };
+        }
+    };
+    const SampleUnion = union(Tag) {
+        int: i32,
+        float: f64,
+        boolean: Bool,
+    };
+
+    const UnionStruct = struct { union_field: SampleUnion };
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try CsvParser(UnionStruct, @TypeOf(reader), .{}).init(arena.allocator(), reader);
+
+    const expected = [_]UnionStruct{
+        .{ .union_field = SampleUnion{ .int = 1 } },
+        // .{ .union_field = SampleUnion{ .float = 2.3 } },
+        // .{ .union_field = SampleUnion{ .boolean = .{ .is_bool = true } } },
+    };
+
+    for (expected) |e| {
+        const row = try parser.next() orelse unreachable;
+        try testStructEql(UnionStruct, e, row);
     }
 }

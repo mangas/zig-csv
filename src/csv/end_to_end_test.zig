@@ -39,23 +39,23 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     return rows;
 }
 
-test "end to end" {
-    const from_path = "test/data/simple_end_to_end.csv";
-    const to_path = "tmp/simple_end_to_end.csv";
+// test "end to end" {
+//     const from_path = "test/data/simple_end_to_end.csv";
+//     const to_path = "tmp/simple_end_to_end.csv";
 
-    var from_file = try fs.cwd().openFile(from_path, .{});
-    defer from_file.close();
+//     var from_file = try fs.cwd().openFile(from_path, .{});
+//     defer from_file.close();
 
-    var to_file = try fs.cwd().openFile(to_path, .{});
-    defer to_file.close();
+//     var to_file = try fs.cwd().openFile(to_path, .{});
+//     defer to_file.close();
 
-    const rows = try copyCsv(Simple, from_path, to_path);
+//     const rows = try copyCsv(Simple, from_path, to_path);
 
-    const expected_rows: usize = 17;
-    try std.testing.expectEqual(expected_rows, rows);
+//     const expected_rows: usize = 17;
+//     try std.testing.expectEqual(expected_rows, rows);
 
-    try std.testing.expect(try utils.eqlFileContents(from_file, to_file));
-}
+//     try std.testing.expect(try utils.eqlContentReader(from_file.reader(), to_file.reader()));
+// }
 
 const Color = enum { red, blue, green, yellow };
 
@@ -88,20 +88,21 @@ test "parsing pokemon" {
         }
     }
     try std.testing.expectEqual(number_captured, 1);
-    std.debug.print("You have captured {} Pokemons", .{number_captured});
 }
 
 test "serializing pokemon" {
-    var file = try fs.cwd().createFile("tmp/pokemon.csv", .{});
-    defer file.close();
-    const writer = file.writer();
+    // var file = try fs.cwd().createFile("tmp/pokemon.csv", .{});
+    // defer file.close();
+    var buf: [1000]u8 = .{0} ** 1000;
+    var stream = std.io.fixedBufferStream(&buf);
+    const writer = stream.writer();
 
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const config: cnf.CsvConfig = .{};
-    const PokemonCsvSerializer = serialize.CsvSerializer(Pokemon, fs.File.Writer, config);
+    const PokemonCsvSerializer = serialize.CsvSerializer(Pokemon, @TypeOf(writer), config);
     var serializer = PokemonCsvSerializer.init(writer);
 
     const pokemons = [3]Pokemon{

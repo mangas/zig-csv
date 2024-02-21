@@ -757,8 +757,8 @@ test "nested struct" {
     const input =
         \\ union_field,
         \\1,
-        // \\2.3,
-        // \\true,
+        \\2.3,
+        \\true,
     ;
 
     var stream = std.io.fixedBufferStream(input);
@@ -787,8 +787,8 @@ test "nested struct" {
 
     const expected = [_]UnionStruct{
         .{ .union_field = SampleUnion{ .int = 1 } },
-        // .{ .union_field = SampleUnion{ .float = 2.3 } },
-        // .{ .union_field = SampleUnion{ .boolean = .{ .is_bool = true } } },
+        .{ .union_field = SampleUnion{ .float = 2.3 } },
+        .{ .union_field = SampleUnion{ .boolean = .{ .is_bool = true } } },
     };
 
     for (expected) |e| {

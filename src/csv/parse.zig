@@ -49,6 +49,24 @@ pub inline fn parseAtomic(
                 return @as(T, @enumFromInt(i));
             }
         },
+        .Struct => |_| {
+            if (!@hasDecl(T, "fromStr")) {
+                @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+            }
+            const fromStr = T.fromStr;
+            const info = @typeInfo(@TypeOf(fromStr));
+            if (info == .Fn) {
+                const func = info.Fn;
+                if (func.params.len != 1) {
+                    @compileError("Unsupported type " ++ @typeName(T) ++ ". Expected fromStr fn([]const u8) !T");
+                }
+                if (func.return_type == null or func.return_type.? != T) {
+                    @compileError("Unsupported type " ++ @typeName(T) ++ ". Expected fromStr fn([]const u8) !T");
+                }
+
+                return @call(.auto, func, input_val);
+            }
+        },
         else => {
             @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
         },

@@ -52,8 +52,7 @@ pub inline fn parseAtomic(
         .Struct => |_| {
             // std.debug.print("{any} - {s}", .{ T, input_val });
             if (!@hasDecl(T, "fromStr")) {
-                return error.BadInput;
-                // @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+                @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
             }
             const fromStr = T.fromStr;
             const info = @typeInfo(@TypeOf(fromStr));

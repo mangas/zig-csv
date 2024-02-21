@@ -194,7 +194,7 @@ pub fn CsvParser(
         }
 
         // Try to read a row into draft_struct and re-return it it if possible
-        pub fn nextInto(self: *Self, draft_struct: *T) CsvParseError!?*T {
+        pub fn nextInto(self: *Self, draft_struct: *T) !?*T {
             var fields_added: u32 = 0;
             inline for (Fields) |F| {
                 const token = try self.tokenizer.next();
